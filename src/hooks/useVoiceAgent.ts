@@ -1,13 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { WebVoiceAgent } from '../lib/WebVoiceAgent';
-import type { WebVoiceAgentConfig, WebCallOptions } from '../lib/WebVoiceAgent';
-import type { VoiceConfig, ModelConfig, AssistantConfig } from '../config/voiceAgentConfig';
-import { VoiceAgentConfigBuilder, PRESET_CONTEXTS, DEFAULT_VOICES, DEFAULT_MODELS } from '../config/voiceAgentConfig';
+import { WebVoiceAgent, type WebVoiceAgentConfig, type WebCallOptions } from '../lib/WebVoiceAgent';
 
 export interface UseVoiceAgentOptions {
   publicKey: string;
-  baseUrl?: string;
-  autoRegisterContexts?: boolean;
 }
 
 export interface VoiceAgentState {
@@ -18,14 +13,14 @@ export interface VoiceAgentState {
   volumeLevel: number;
   speechActive: boolean;
   error?: string;
-  lastMessage?: any;
-  lastFunctionCall?: any;
+  lastMessage?: object;
+  lastFunctionCall?: object;
   availableContexts: string[];
   agentReady: boolean;
 }
 
 export function useVoiceAgent(options: UseVoiceAgentOptions) {
-  const { publicKey, baseUrl, autoRegisterContexts = true } = options;
+  const { publicKey } = options;
   const agentRef = useRef<WebVoiceAgent | null>(null);
   
   const [state, setState] = useState<VoiceAgentState>({
@@ -43,11 +38,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
     if (!publicKey) return;
 
     try {
-      const config: WebVoiceAgentConfig = { 
-        publicKey,
-        baseUrl,
-        autoCreateDefaultContexts: autoRegisterContexts
-      };
+      const config: WebVoiceAgentConfig = { publicKey };
       agentRef.current = new WebVoiceAgent(config);
 
       const agent = agentRef.current;
@@ -84,11 +75,11 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
         setState(prev => ({ ...prev, volumeLevel: level }));
       });
 
-      agent.on('message', (message: any) => {
+      agent.on('message', (message: object) => {
         setState(prev => ({ ...prev, lastMessage: message }));
       });
 
-      agent.on('function-call', (functionCall: any) => {
+      agent.on('function-call', (functionCall: object) => {
         setState(prev => ({ ...prev, lastFunctionCall: functionCall }));
       });
 
@@ -101,7 +92,7 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
         }));
       });
 
-      // Set agent ready and available contexts after successful initialization
+      // Set agent ready and available contexts
       const contexts = agent.getRegisteredContexts();
       console.log('Voice agent initialized with contexts:', contexts);
       setState(prev => ({
@@ -122,9 +113,9 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
         agentRef.current.endCall();
       }
     };
-  }, [publicKey, baseUrl, autoRegisterContexts]);
+  }, [publicKey]);
 
-  // Core call management with dynamic data support
+  // Start call (basic)
   const startCall = useCallback(async (contextId: string, options: WebCallOptions = {}) => {
     if (!agentRef.current) {
       throw new Error('Voice agent not initialized');
@@ -147,9 +138,9 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
     }
   }, []);
 
-  // Start call with dynamic data (names, companies, etc.)
-  const startCallWithData = useCallback(async (contextId: string, dynamicData: Record<string, any>, options: WebCallOptions = {}) => {
-    return startCall(contextId, { ...options, dynamicData });
+  // Start call with dynamic data
+  const startCallWithData = useCallback(async (contextId: string, dynamicData: Record<string, string>) => {
+    return startCall(contextId, { dynamicData });
   }, [startCall]);
 
   const endCall = useCallback(async () => {
@@ -173,53 +164,11 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
     setState(prev => ({ ...prev, isMuted: newMutedState }));
   }, [state.isMuted]);
 
-  // Context management
-  const registerCustomContext = useCallback((
-    id: string,
-    name: string,
-    description: string,
-    assistant: AssistantConfig,
-    functionHandlers?: Record<string, (params: any) => Promise<any>>
-  ) => {
-    if (!agentRef.current) {
-      throw new Error('Voice agent not initialized');
-    }
-
-    agentRef.current.registerCustomContext(id, name, description, assistant, functionHandlers);
-    
-    // Update available contexts
-    const contexts = agentRef.current.getRegisteredContexts();
-    setState(prev => ({ ...prev, availableContexts: contexts }));
+  const clearError = useCallback(() => {
+    setState(prev => ({ ...prev, error: undefined }));
   }, []);
 
-  // Quick context creation helpers
-  const createSDRContext = useCallback((customConfig?: Partial<AssistantConfig>) => {
-    const config = PRESET_CONTEXTS.sdr(customConfig);
-    registerCustomContext(config.id, config.name, config.description, config.assistant);
-    return config.id;
-  }, [registerCustomContext]);
-
-  const createRecruiterContext = useCallback((customConfig?: Partial<AssistantConfig>) => {
-    const config = PRESET_CONTEXTS.recruiter(customConfig);
-    registerCustomContext(config.id, config.name, config.description, config.assistant);
-    return config.id;
-  }, [registerCustomContext]);
-
-  const createCustomerSupportContext = useCallback((customConfig?: Partial<AssistantConfig>) => {
-    const config = PRESET_CONTEXTS.customerSupport(customConfig);
-    registerCustomContext(config.id, config.name, config.description, config.assistant);
-    return config.id;
-  }, [registerCustomContext]);
-
-  // Builder pattern helper
-  const createContextWithBuilder = useCallback((builderCallback: (builder: VoiceAgentConfigBuilder) => VoiceAgentConfigBuilder) => {
-    const builder = VoiceAgentConfigBuilder.create('custom-context');
-    const config = builderCallback(builder).build();
-    registerCustomContext(config.id, config.name, config.description, config.assistant, config.functions);
-    return config.id;
-  }, [registerCustomContext]);
-
-  // Utility functions
+  // Simple getters
   const getAvailableContexts = useCallback(() => {
     return state.availableContexts;
   }, [state.availableContexts]);
@@ -228,40 +177,20 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
     return agentRef.current?.getCurrentContext();
   }, []);
 
-  const getContextConfig = useCallback((contextId: string) => {
-    return agentRef.current?.getContextConfig(contextId);
-  }, []);
-
-  const clearError = useCallback(() => {
-    setState(prev => ({ ...prev, error: undefined }));
-  }, []);
-
   return {
     // State
     ...state,
     
-    // Core actions
+    // Actions
     startCall,
-    startCallWithData, // New: Start call with dynamic data
+    startCallWithData,
     endCall,
     toggleMute,
-    
-    // Context management
-    registerCustomContext,
-    createSDRContext,
-    createRecruiterContext,
-    createCustomerSupportContext,
-    createContextWithBuilder,
+    clearError,
     
     // Utilities
     getAvailableContexts,
     getCurrentContext,
-    getContextConfig,
-    clearError,
-    
-    // Constants for easy access
-    availableVoices: DEFAULT_VOICES,
-    availableModels: DEFAULT_MODELS,
     
     // Agent instance (for advanced usage)
     agent: agentRef.current,
