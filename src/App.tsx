@@ -1,7 +1,7 @@
-import { useVoiceAgent } from './hooks/useVoiceAgent';
-import { VoiceControls } from './components/VoiceControls';
-import './components/VoiceControls.css';
-import './App.css';
+import { useVoiceAgent } from "./hooks/useVoiceAgent";
+import { VoiceControls } from "./components/VoiceControls";
+import "./components/VoiceControls.css";
+import "./App.css";
 
 // Vapi public key from environment variables
 const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY;
@@ -11,13 +11,13 @@ function App() {
     publicKey: VAPI_PUBLIC_KEY,
   });
 
-  console.log('Using Vapi public key:', VAPI_PUBLIC_KEY ? 'Set' : 'Not set');
+  console.log("Using Vapi public key:", VAPI_PUBLIC_KEY ? "Set" : "Not set");
 
   const handleStartCall = async (contextId: string) => {
     try {
       await voiceAgent.startCall(contextId);
     } catch (error) {
-      console.error('Failed to start call:', error);
+      console.error("Failed to start call:", error);
     }
   };
 
@@ -25,31 +25,31 @@ function App() {
     try {
       await voiceAgent.endCall();
     } catch (error) {
-      console.error('Failed to end call:', error);
+      console.error("Failed to end call:", error);
     }
   };
 
   // Example of starting a call with dynamic data
   const handleStartSDRCallWithData = async () => {
     try {
-      await voiceAgent.startCallWithData('sdr', {
-        prospectName: 'John Smith',
-        companyName: 'Tech Solutions Inc.'
+      await voiceAgent.startCallWithData("sdr", {
+        prospectName: "John Smith",
+        companyName: "Tech Solutions Inc.",
       });
     } catch (error) {
-      console.error('Failed to start SDR call with data:', error);
+      console.error("Failed to start SDR call with data:", error);
     }
   };
 
   const handleStartRecruiterCallWithData = async () => {
     try {
-      await voiceAgent.startCallWithData('recruiter', {
-        candidateName: 'Sarah Johnson',
-        position: 'Senior Software Engineer',
-        companyName: 'Innovate Corp'
+      await voiceAgent.startCallWithData("recruiter", {
+        candidateName: "Sarah Johnson",
+        position: "Senior Software Engineer",
+        companyName: "Innovate Corp",
       });
     } catch (error) {
-      console.error('Failed to start recruiter call with data:', error);
+      console.error("Failed to start recruiter call with data:", error);
     }
   };
 
@@ -70,21 +70,28 @@ function App() {
             onToggleMute={voiceAgent.toggleMute}
             onClearError={voiceAgent.clearError}
           />
-          
+
           {/* Dynamic Data Controls */}
           <div className="dynamic-controls">
             <h3>🎯 Dynamic Data Examples</h3>
             <div className="control-buttons">
-              <button onClick={handleStartSDRCallWithData} className="config-btn">
+              <button
+                onClick={handleStartSDRCallWithData}
+                className="config-btn"
+              >
                 SDR Call: John @ Tech Solutions
               </button>
-              <button onClick={handleStartRecruiterCallWithData} className="config-btn">
+              <button
+                onClick={handleStartRecruiterCallWithData}
+                className="config-btn"
+              >
                 Recruiter Call: Sarah for SWE Role
               </button>
             </div>
             <p className="dynamic-info">
-              These buttons demonstrate dynamic data injection - names and companies are 
-              automatically inserted into the conversation context.
+              These buttons demonstrate dynamic data injection - names and
+              companies are automatically inserted into the conversation
+              context.
             </p>
           </div>
         </div>
@@ -100,7 +107,9 @@ function App() {
                 <li>BANT criteria qualification</li>
                 <li>Meeting scheduling</li>
               </ul>
-              <small>Voice: Nova | Model: GPT-4 | Template: "Hi {`{{prospectName}}`}"</small>
+              <small>
+                Voice: Nova | Model: GPT-4 | Template: "Hi {`{{prospectName}}`}"
+              </small>
             </div>
 
             <div className="context-card">
@@ -112,7 +121,10 @@ function App() {
                 <li>Company culture alignment {`{{companyName}}`}</li>
                 <li>Technical assessments</li>
               </ul>
-              <small>Voice: Shimmer | Model: GPT-4 | Template: "Hello {`{{candidateName}}`}!"</small>
+              <small>
+                Voice: Shimmer | Model: GPT-4 | Template: "Hello{" "}
+                {`{{candidateName}}`}!"
+              </small>
             </div>
 
             <div className="context-card">
@@ -143,14 +155,6 @@ function App() {
           )}
         </div>
       </main>
-
-      <footer className="app-footer">
-        <p>
-          Built with <a href="https://vapi.ai" target="_blank" rel="noopener noreferrer">Vapi</a> • 
-          Dynamic Configuration System • 
-          Powered by AI voice technology
-        </p>
-      </footer>
     </div>
   );
 }
