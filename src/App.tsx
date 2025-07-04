@@ -67,7 +67,6 @@ function App() {
             availableContexts={voiceAgent.getAvailableContexts()}
             onStartCall={handleStartCall}
             onEndCall={handleEndCall}
-            onToggleMute={voiceAgent.toggleMute}
             onClearError={voiceAgent.clearError}
           />
 

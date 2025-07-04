@@ -1,8 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { WebVoiceAgent, type WebVoiceAgentConfig, type WebCallOptions } from '../lib/WebVoiceAgent';
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  WebVoiceAgent,
+  type WebVoiceAgentConfig,
+  type WebCallOptions,
+} from "../lib/WebVoiceAgent";
 
 export interface UseVoiceAgentOptions {
   publicKey: string;
+}
+
+export interface FunctionCall {
+  name: string;
+  parameters: object;
+  result: { success: boolean; timestamp: string };
 }
 
 export interface VoiceAgentState {
@@ -14,7 +24,7 @@ export interface VoiceAgentState {
   speechActive: boolean;
   error?: string;
   lastMessage?: object;
-  lastFunctionCall?: object;
+  lastFunctionCall?: FunctionCall;
   availableContexts: string[];
   agentReady: boolean;
 }
@@ -22,7 +32,7 @@ export interface VoiceAgentState {
 export function useVoiceAgent(options: UseVoiceAgentOptions) {
   const { publicKey } = options;
   const agentRef = useRef<WebVoiceAgent | null>(null);
-  
+
   const [state, setState] = useState<VoiceAgentState>({
     isCallActive: false,
     isMuted: false,
@@ -44,67 +54,69 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
       const agent = agentRef.current;
 
       // Set up event listeners
-      agent.on('call-start', () => {
-        setState(prev => ({ 
-          ...prev, 
-          isCallActive: true, 
+      agent.on("call-start", () => {
+        setState((prev) => ({
+          ...prev,
+          isCallActive: true,
           isConnecting: false,
-          error: undefined 
+          error: undefined,
         }));
       });
 
-      agent.on('call-end', () => {
-        setState(prev => ({ 
-          ...prev, 
-          isCallActive: false, 
+      agent.on("call-end", () => {
+        setState((prev) => ({
+          ...prev,
+          isCallActive: false,
           isConnecting: false,
           speechActive: false,
-          volumeLevel: 0 
+          volumeLevel: 0,
         }));
       });
 
-      agent.on('speech-start', () => {
-        setState(prev => ({ ...prev, speechActive: true }));
+      agent.on("speech-start", () => {
+        setState((prev) => ({ ...prev, speechActive: true }));
       });
 
-      agent.on('speech-end', () => {
-        setState(prev => ({ ...prev, speechActive: false }));
+      agent.on("speech-end", () => {
+        setState((prev) => ({ ...prev, speechActive: false }));
       });
 
-      agent.on('volume-level', (level: number) => {
-        setState(prev => ({ ...prev, volumeLevel: level }));
+      agent.on("volume-level", (level: number) => {
+        setState((prev) => ({ ...prev, volumeLevel: level }));
       });
 
-      agent.on('message', (message: object) => {
-        setState(prev => ({ ...prev, lastMessage: message }));
+      agent.on("message", (message: object) => {
+        setState((prev) => ({ ...prev, lastMessage: message }));
       });
 
-      agent.on('function-call', (functionCall: object) => {
-        setState(prev => ({ ...prev, lastFunctionCall: functionCall }));
+      agent.on("function-call", (functionCall: FunctionCall) => {
+        setState((prev) => ({ ...prev, lastFunctionCall: functionCall }));
       });
 
-      agent.on('error', (error: Error) => {
-        setState(prev => ({ 
-          ...prev, 
+      agent.on("error", (error: Error) => {
+        setState((prev) => ({
+          ...prev,
           error: error.message,
           isConnecting: false,
-          isCallActive: false 
+          isCallActive: false,
         }));
       });
 
       // Set agent ready and available contexts
       const contexts = agent.getRegisteredContexts();
-      console.log('Voice agent initialized with contexts:', contexts);
-      setState(prev => ({
+      console.log("Voice agent initialized with contexts:", contexts);
+      setState((prev) => ({
         ...prev,
         agentReady: true,
-        availableContexts: contexts
+        availableContexts: contexts,
       }));
-
     } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
-        error: error instanceof Error ? error.message : 'Failed to initialize voice agent' 
+      setState((prev) => ({
+        ...prev,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to initialize voice agent",
       }));
     }
 
@@ -116,32 +128,39 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
   }, [publicKey]);
 
   // Start call (basic)
-  const startCall = useCallback(async (contextId: string, options: WebCallOptions = {}) => {
-    if (!agentRef.current) {
-      throw new Error('Voice agent not initialized');
-    }
+  const startCall = useCallback(
+    async (contextId: string, options: WebCallOptions = {}) => {
+      if (!agentRef.current) {
+        throw new Error("Voice agent not initialized");
+      }
 
-    setState(prev => ({ ...prev, isConnecting: true, error: undefined }));
+      setState((prev) => ({ ...prev, isConnecting: true, error: undefined }));
 
-    try {
-      agentRef.current.switchContext(contextId);
-      setState(prev => ({ ...prev, currentContext: contextId }));
-      
-      await agentRef.current.startCall(options);
-    } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
-        isConnecting: false,
-        error: error instanceof Error ? error.message : 'Failed to start call' 
-      }));
-      throw error;
-    }
-  }, []);
+      try {
+        agentRef.current.switchContext(contextId);
+        setState((prev) => ({ ...prev, currentContext: contextId }));
+
+        await agentRef.current.startCall(options);
+      } catch (error) {
+        setState((prev) => ({
+          ...prev,
+          isConnecting: false,
+          error:
+            error instanceof Error ? error.message : "Failed to start call",
+        }));
+        throw error;
+      }
+    },
+    [],
+  );
 
   // Start call with dynamic data
-  const startCallWithData = useCallback(async (contextId: string, dynamicData: Record<string, string>) => {
-    return startCall(contextId, { dynamicData });
-  }, [startCall]);
+  const startCallWithData = useCallback(
+    async (contextId: string, dynamicData: Record<string, string>) => {
+      return startCall(contextId, { dynamicData });
+    },
+    [startCall],
+  );
 
   const endCall = useCallback(async () => {
     if (!agentRef.current) return;
@@ -149,23 +168,15 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
     try {
       await agentRef.current.endCall();
     } catch (error) {
-      setState(prev => ({ 
-        ...prev, 
-        error: error instanceof Error ? error.message : 'Failed to end call' 
+      setState((prev) => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to end call",
       }));
     }
   }, []);
 
-  const toggleMute = useCallback(() => {
-    if (!agentRef.current) return;
-
-    const newMutedState = !state.isMuted;
-    agentRef.current.setMuted(newMutedState);
-    setState(prev => ({ ...prev, isMuted: newMutedState }));
-  }, [state.isMuted]);
-
   const clearError = useCallback(() => {
-    setState(prev => ({ ...prev, error: undefined }));
+    setState((prev) => ({ ...prev, error: undefined }));
   }, []);
 
   // Simple getters
@@ -180,18 +191,17 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
   return {
     // State
     ...state,
-    
+
     // Actions
     startCall,
     startCallWithData,
     endCall,
-    toggleMute,
     clearError,
-    
+
     // Utilities
     getAvailableContexts,
     getCurrentContext,
-    
+
     // Agent instance (for advanced usage)
     agent: agentRef.current,
   };
