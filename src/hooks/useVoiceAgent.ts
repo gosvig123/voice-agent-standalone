@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useReducer, useEffect, useCallback, useRef } from "react";
 import {
   WebVoiceAgent,
   type WebVoiceAgentConfig,
@@ -9,41 +9,141 @@ export interface UseVoiceAgentOptions {
   publicKey: string;
 }
 
-export interface FunctionCall {
-  name: string;
-  parameters: object;
-  result: { success: boolean; timestamp: string };
-}
-
 export interface VoiceAgentState {
   isCallActive: boolean;
-  isMuted: boolean;
   isConnecting: boolean;
   currentContext?: string;
   volumeLevel: number;
   speechActive: boolean;
   error?: string;
-  lastMessage?: object;
-  lastFunctionCall?: FunctionCall;
   availableContexts: string[];
   agentReady: boolean;
+  connectionAttempts: number;
+  isReconnecting: boolean;
+}
+
+type VoiceAgentAction =
+  | { type: 'SET_CONNECTING'; payload: boolean }
+  | { type: 'SET_CALL_ACTIVE'; payload: boolean }
+  | { type: 'SET_SPEECH_ACTIVE'; payload: boolean }
+  | { type: 'SET_VOLUME_LEVEL'; payload: number }
+  | { type: 'SET_ERROR'; payload: string | undefined }
+  | { type: 'SET_CONTEXT'; payload: string }
+  | { type: 'SET_AGENT_READY'; payload: { ready: boolean; contexts: string[] } }
+  | { type: 'SET_RECONNECTING'; payload: boolean }
+  | { type: 'INCREMENT_CONNECTION_ATTEMPTS' }
+  | { type: 'RESET_CONNECTION_ATTEMPTS' }
+  | { type: 'RESET_CALL_STATE' };
+
+const initialState: VoiceAgentState = {
+  isCallActive: false,
+  isConnecting: false,
+  volumeLevel: 0,
+  speechActive: false,
+  availableContexts: [],
+  agentReady: false,
+  connectionAttempts: 0,
+  isReconnecting: false,
+};
+
+function voiceAgentReducer(state: VoiceAgentState, action: VoiceAgentAction): VoiceAgentState {
+  switch (action.type) {
+    case 'SET_CONNECTING':
+      return { ...state, isConnecting: action.payload, error: action.payload ? undefined : state.error };
+    case 'SET_CALL_ACTIVE':
+      return { 
+        ...state, 
+        isCallActive: action.payload, 
+        isConnecting: false,
+        speechActive: action.payload ? state.speechActive : false,
+        volumeLevel: action.payload ? state.volumeLevel : 0,
+        isReconnecting: false,
+      };
+    case 'SET_SPEECH_ACTIVE':
+      return { ...state, speechActive: action.payload };
+    case 'SET_VOLUME_LEVEL':
+      return { ...state, volumeLevel: action.payload };
+    case 'SET_ERROR':
+      return { 
+        ...state, 
+        error: action.payload, 
+        isConnecting: false, 
+        isCallActive: false,
+        isReconnecting: false,
+      };
+    case 'SET_CONTEXT':
+      return { ...state, currentContext: action.payload };
+    case 'SET_AGENT_READY':
+      return { ...state, agentReady: action.payload.ready, availableContexts: action.payload.contexts };
+    case 'SET_RECONNECTING':
+      return { ...state, isReconnecting: action.payload };
+    case 'INCREMENT_CONNECTION_ATTEMPTS':
+      return { ...state, connectionAttempts: state.connectionAttempts + 1 };
+    case 'RESET_CONNECTION_ATTEMPTS':
+      return { ...state, connectionAttempts: 0 };
+    case 'RESET_CALL_STATE':
+      return { 
+        ...state, 
+        isCallActive: false, 
+        isConnecting: false, 
+        speechActive: false, 
+        volumeLevel: 0, 
+        isReconnecting: false,
+      };
+    default:
+      return state;
+  }
 }
 
 export function useVoiceAgent(options: UseVoiceAgentOptions) {
   const { publicKey } = options;
   const agentRef = useRef<WebVoiceAgent | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [state, dispatch] = useReducer(voiceAgentReducer, initialState);
 
-  const [state, setState] = useState<VoiceAgentState>({
-    isCallActive: false,
-    isMuted: false,
-    isConnecting: false,
-    volumeLevel: 0,
-    speechActive: false,
-    availableContexts: [],
-    agentReady: false,
-  });
+  const handleCallStart = useCallback(() => {
+    dispatch({ type: 'SET_CALL_ACTIVE', payload: true });
+    dispatch({ type: 'RESET_CONNECTION_ATTEMPTS' });
+  }, []);
 
-  // Initialize agent
+  const handleCallEnd = useCallback(() => {
+    dispatch({ type: 'SET_CALL_ACTIVE', payload: false });
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleSpeechStart = useCallback(() => {
+    dispatch({ type: 'SET_SPEECH_ACTIVE', payload: true });
+  }, []);
+
+  const handleSpeechEnd = useCallback(() => {
+    dispatch({ type: 'SET_SPEECH_ACTIVE', payload: false });
+  }, []);
+
+  const handleVolumeLevel = useCallback((level: number) => {
+    dispatch({ type: 'SET_VOLUME_LEVEL', payload: level });
+  }, []);
+
+  const handleError = useCallback((error: Error) => {
+    dispatch({ type: 'SET_ERROR', payload: error.message });
+    dispatch({ type: 'INCREMENT_CONNECTION_ATTEMPTS' });
+    
+    if (state.connectionAttempts < 3 && state.isCallActive) {
+      const retryDelay = Math.min(1000 * Math.pow(2, state.connectionAttempts), 5000);
+      dispatch({ type: 'SET_RECONNECTING', payload: true });
+      
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (agentRef.current && state.currentContext) {
+          agentRef.current.startCall().catch(() => {
+            dispatch({ type: 'SET_ERROR', payload: 'Failed to reconnect' });
+          });
+        }
+      }, retryDelay);
+    }
+  }, [state.connectionAttempts, state.isCallActive, state.currentContext]);
+
   useEffect(() => {
     if (!publicKey) return;
 
@@ -53,156 +153,83 @@ export function useVoiceAgent(options: UseVoiceAgentOptions) {
 
       const agent = agentRef.current;
 
-      // Set up event listeners
-      agent.on("call-start", () => {
-        setState((prev) => ({
-          ...prev,
-          isCallActive: true,
-          isConnecting: false,
-          error: undefined,
-        }));
-      });
+      agent.on("call-start", handleCallStart);
+      agent.on("call-end", handleCallEnd);
+      agent.on("speech-start", handleSpeechStart);
+      agent.on("speech-end", handleSpeechEnd);
+      agent.on("volume-level", handleVolumeLevel);
+      agent.on("error", handleError);
 
-      agent.on("call-end", () => {
-        setState((prev) => ({
-          ...prev,
-          isCallActive: false,
-          isConnecting: false,
-          speechActive: false,
-          volumeLevel: 0,
-        }));
-      });
-
-      agent.on("speech-start", () => {
-        setState((prev) => ({ ...prev, speechActive: true }));
-      });
-
-      agent.on("speech-end", () => {
-        setState((prev) => ({ ...prev, speechActive: false }));
-      });
-
-      agent.on("volume-level", (level: number) => {
-        setState((prev) => ({ ...prev, volumeLevel: level }));
-      });
-
-      agent.on("message", (message: object) => {
-        setState((prev) => ({ ...prev, lastMessage: message }));
-      });
-
-      agent.on("function-call", (functionCall: FunctionCall) => {
-        setState((prev) => ({ ...prev, lastFunctionCall: functionCall }));
-      });
-
-      agent.on("error", (error: Error) => {
-        setState((prev) => ({
-          ...prev,
-          error: error.message,
-          isConnecting: false,
-          isCallActive: false,
-        }));
-      });
-
-      // Set agent ready and available contexts
       const contexts = agent.getRegisteredContexts();
-      console.log("Voice agent initialized with contexts:", contexts);
-      setState((prev) => ({
-        ...prev,
-        agentReady: true,
-        availableContexts: contexts,
-      }));
+      dispatch({ type: 'SET_AGENT_READY', payload: { ready: true, contexts } });
     } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to initialize voice agent",
-      }));
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : "Failed to initialize voice agent"
+      });
     }
 
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       if (agentRef.current?.isCallActive()) {
         agentRef.current.endCall();
       }
     };
-  }, [publicKey]);
+  }, [publicKey, handleCallStart, handleCallEnd, handleSpeechStart, handleSpeechEnd, handleVolumeLevel, handleError]);
 
-  // Start call (basic)
   const startCall = useCallback(
     async (contextId: string, options: WebCallOptions = {}) => {
       if (!agentRef.current) {
         throw new Error("Voice agent not initialized");
       }
 
-      setState((prev) => ({ ...prev, isConnecting: true, error: undefined }));
+      dispatch({ type: 'SET_CONNECTING', payload: true });
+      dispatch({ type: 'RESET_CONNECTION_ATTEMPTS' });
 
       try {
         agentRef.current.switchContext(contextId);
-        setState((prev) => ({ ...prev, currentContext: contextId }));
-
+        dispatch({ type: 'SET_CONTEXT', payload: contextId });
         await agentRef.current.startCall(options);
       } catch (error) {
-        setState((prev) => ({
-          ...prev,
-          isConnecting: false,
-          error:
-            error instanceof Error ? error.message : "Failed to start call",
-        }));
+        dispatch({ 
+          type: 'SET_ERROR', 
+          payload: error instanceof Error ? error.message : "Failed to start call"
+        });
         throw error;
       }
     },
     [],
   );
 
-  // Start call with dynamic data
-  const startCallWithData = useCallback(
-    async (contextId: string, dynamicData: Record<string, string>) => {
-      return startCall(contextId, { dynamicData });
-    },
-    [startCall],
-  );
-
   const endCall = useCallback(async () => {
     if (!agentRef.current) return;
 
     try {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       await agentRef.current.endCall();
+      dispatch({ type: 'RESET_CALL_STATE' });
     } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        error: error instanceof Error ? error.message : "Failed to end call",
-      }));
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : "Failed to end call"
+      });
     }
   }, []);
 
   const clearError = useCallback(() => {
-    setState((prev) => ({ ...prev, error: undefined }));
-  }, []);
-
-  // Simple getters
-  const getAvailableContexts = useCallback(() => {
-    return state.availableContexts;
-  }, [state.availableContexts]);
-
-  const getCurrentContext = useCallback(() => {
-    return agentRef.current?.getCurrentContext();
+    dispatch({ type: 'SET_ERROR', payload: undefined });
   }, []);
 
   return {
-    // State
     ...state,
-
-    // Actions
     startCall,
-    startCallWithData,
     endCall,
     clearError,
-
-    // Utilities
-    getAvailableContexts,
-    getCurrentContext,
-
-    // Agent instance (for advanced usage)
     agent: agentRef.current,
   };
 }

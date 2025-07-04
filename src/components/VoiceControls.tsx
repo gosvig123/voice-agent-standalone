@@ -3,7 +3,6 @@ import type { VoiceAgentState } from "../hooks/useVoiceAgent";
 
 export interface VoiceControlsProps {
   state: VoiceAgentState;
-  availableContexts: string[];
   onStartCall: (contextId: string) => void;
   onEndCall: () => void;
   onClearError: () => void;
@@ -11,13 +10,12 @@ export interface VoiceControlsProps {
 
 export function VoiceControls({
   state,
-  availableContexts,
   onStartCall,
   onEndCall,
   onClearError,
 }: VoiceControlsProps) {
   const [selectedContext, setSelectedContext] = React.useState(
-    availableContexts[0] || "",
+    state.availableContexts[0] || "",
   );
 
   const handleStartCall = () => {
@@ -35,11 +33,13 @@ export function VoiceControls({
             className={`status-dot ${state.isCallActive ? "active" : "inactive"}`}
           ></span>
           <span className="status-text">
-            {state.isConnecting
-              ? "Connecting..."
-              : state.isCallActive
-                ? "Call Active"
-                : "Ready"}
+            {state.isReconnecting
+              ? "Reconnecting..."
+              : state.isConnecting
+                ? "Connecting..."
+                : state.isCallActive
+                  ? "Call Active"
+                  : "Ready"}
           </span>
         </div>
       </div>
@@ -61,7 +61,7 @@ export function VoiceControls({
           onChange={(e) => setSelectedContext(e.target.value)}
           disabled={state.isCallActive || state.isConnecting}
         >
-          {availableContexts.map((context) => (
+          {state.availableContexts.map((context) => (
             <option key={context} value={context}>
               {context.charAt(0).toUpperCase() + context.slice(1)}
             </option>
@@ -73,7 +73,7 @@ export function VoiceControls({
         {!state.isCallActive ? (
           <button
             onClick={handleStartCall}
-            disabled={state.isConnecting || !selectedContext}
+            disabled={state.isConnecting || state.isReconnecting || !selectedContext}
             className="start-call-btn"
           >
             {state.isConnecting ? "Starting..." : "Start Call"}
@@ -114,17 +114,10 @@ export function VoiceControls({
         </div>
       )}
 
-      {state.lastFunctionCall && (
-        <div className="function-call-info">
-          <h3>Last Function Call:</h3>
-          <div className="function-details">
-            <div>
-              <strong>Function:</strong> {state.lastFunctionCall.name}
-            </div>
-            <div>
-              <strong>Result:</strong>{" "}
-              {state.lastFunctionCall.result?.success ? "Success" : "Failed"}
-            </div>
+      {state.connectionAttempts > 0 && state.isReconnecting && (
+        <div className="connection-info">
+          <div className="reconnection-status">
+            <span>Reconnection attempt: {state.connectionAttempts}/3</span>
           </div>
         </div>
       )}

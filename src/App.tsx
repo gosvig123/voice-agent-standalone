@@ -29,12 +29,13 @@ function App() {
     }
   };
 
-  // Example of starting a call with dynamic data
   const handleStartSDRCallWithData = async () => {
     try {
-      await voiceAgent.startCallWithData("sdr", {
-        prospectName: "John Smith",
-        companyName: "Tech Solutions Inc.",
+      await voiceAgent.startCall("sdr", {
+        dynamicData: {
+          prospectName: "John Smith",
+          companyName: "Tech Solutions Inc.",
+        }
       });
     } catch (error) {
       console.error("Failed to start SDR call with data:", error);
@@ -43,10 +44,12 @@ function App() {
 
   const handleStartRecruiterCallWithData = async () => {
     try {
-      await voiceAgent.startCallWithData("recruiter", {
-        candidateName: "Sarah Johnson",
-        position: "Senior Software Engineer",
-        companyName: "Innovate Corp",
+      await voiceAgent.startCall("recruiter", {
+        dynamicData: {
+          candidateName: "Sarah Johnson",
+          position: "Senior Software Engineer",
+          companyName: "Innovate Corp",
+        }
       });
     } catch (error) {
       console.error("Failed to start recruiter call with data:", error);
@@ -64,7 +67,6 @@ function App() {
         <div className="demo-section">
           <VoiceControls
             state={voiceAgent}
-            availableContexts={voiceAgent.getAvailableContexts()}
             onStartCall={handleStartCall}
             onEndCall={handleEndCall}
             onClearError={voiceAgent.clearError}
@@ -139,17 +141,15 @@ function App() {
             </div>
           </div>
 
-          {voiceAgent.lastMessage && (
-            <div className="message-log">
-              <h3>Latest Message</h3>
-              <pre>{JSON.stringify(voiceAgent.lastMessage, null, 2)}</pre>
-            </div>
-          )}
-
-          {voiceAgent.lastFunctionCall && (
-            <div className="function-log">
-              <h3>Latest Function Call</h3>
-              <pre>{JSON.stringify(voiceAgent.lastFunctionCall, null, 2)}</pre>
+          {voiceAgent.error && (
+            <div className="error-log">
+              <h3>Connection Status</h3>
+              <div className="error-details">
+                <p>Error: {voiceAgent.error}</p>
+                {voiceAgent.connectionAttempts > 0 && (
+                  <p>Reconnection attempts: {voiceAgent.connectionAttempts}/3</p>
+                )}
+              </div>
             </div>
           )}
         </div>
